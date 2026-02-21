@@ -1,4 +1,4 @@
-module tabelaIgpt
+module ibpt
 
 go 1.24.0
 
