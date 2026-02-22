@@ -34,18 +34,8 @@ git pull && env GOOS=linux GOARCH=amd64 go build &&  service tabelaIbpt restart 
 
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build         
 
-NA AMAZON INICIAR O SERVICO ASSIM: 
-# systemctl start tabelaIbpt
-
-Jan 13 12:16:15 ip-172-31-34-249 tabelaIbpt[61614]: goroutine 788 [running]:
-Jan 13 12:16:15 ip-172-31-34-249 tabelaIbpt[61614]: net/http.(*conn).serve.func1()
-Jan 13 12:16:15 ip-172-31-34-249 tabelaIbpt[61614]:         /usr/local/go/src/net/http/server.go:1868 +0xb9
-
-
-
-https://fabianlee.org/2022/10/29/golang-running-a-go-binary-as-a-systemd-service-on-ubuntu-22-04/
-
-
+ 
+ 
 
 vi /lib/systemd/system/ibpt.service 
 
@@ -76,3 +66,13 @@ ativa o servico
  
  systemctl start ibpt.service
 journalctl -f -n 100  -u ibpt
+
+
+
+
+PRO CI/CD user apps restart root ibpt.service
+
+Allow the apps user to run that specific command without a password. Run this command on your Hostinger terminal:
+
+bash
+echo "apps ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart ibpt" | sudo tee /etc/sudoers.d/ibpt
