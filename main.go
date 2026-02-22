@@ -35,7 +35,7 @@ const (
 	permanentToken = "TWFycmVjb01hcmluZ2FQcmVzbzIwMjE"
 	csvDir         = "/Users/cassioseffrin/Desktop/54836255000118"
 	adminUser      = "admin"
-	adminPass      = "Heros@2540"
+	adminPass      = "avl@151515"
 )
 
 // ─── Models ──────────────────────────────────────────────────────────────────
