@@ -20,7 +20,7 @@ jobs:
 
       - name: Build Binary
         run: |
-          GOOS=linux GOARCH=amd64 go build -o tabelaIbpt main.go
+          GOOS=linux GOARCH=amd64 go build -o ibpt main.go
 
       - name: Copy Binary to Hostinger
         uses: appleboy/scp-action@v0.1.7
@@ -29,7 +29,7 @@ jobs:
           username: apps
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: "tabelaIbpt"
+          source: "ibpt"
           target: "/home/apps/go/tabelaIbpt"
           strip_components: 0
 
