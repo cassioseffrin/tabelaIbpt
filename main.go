@@ -34,6 +34,8 @@ const (
 	serverPort     = ":8090"
 	permanentToken = "TWFycmVjb01hcmluZ2FQcmVzbzIwMjE"
 	csvDir         = "/Users/cassioseffrin/Desktop/54836255000118"
+	adminUser      = "admin"
+	adminPass      = "Heros@2540"
 )
 
 // ─── Models ──────────────────────────────────────────────────────────────────
@@ -92,16 +94,16 @@ func connectDB() *sql.DB {
 	)
 	conn, err := sql.Open("postgres", connStr)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Falha ao conectar ao banco de dados: %v", err)
 	}
 	conn.SetMaxOpenConns(10)
 	conn.SetMaxIdleConns(5)
 	conn.SetConnMaxLifetime(5 * time.Minute)
 
 	if err := conn.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
+		log.Fatalf("Falha ao pingar o banco de dados: %v", err)
 	}
-	log.Println("✅ Connected to PostgreSQL")
+	log.Println("✅ Conectado ao PostgreSQL")
 	return conn
 }
 
@@ -145,7 +147,7 @@ func ensureTables() {
 			}
 		}
 	}
-	log.Println("✅ Tables ensured (ibpt_product + ibpt_state_tax)")
+	log.Println("✅ Tabelas garantidas (ibpt_product + ibpt_state_tax)")
 }
 
 // ─── CSV Parsing ─────────────────────────────────────────────────────────────
@@ -337,10 +339,10 @@ func processAllCSVFiles(dir string) error {
 		return fmt.Errorf("no CSV files found matching %s", pattern)
 	}
 
-	log.Printf("📂 Found %d CSV files to process", len(files))
+	log.Printf("📂 Encontrados %d arquivos CSV para processar", len(files))
 
 	// Begin transaction
-	log.Println("📦 Starting transaction...")
+	log.Println("📦 Iniciando transação...")
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -348,11 +350,11 @@ func processAllCSVFiles(dir string) error {
 	defer tx.Rollback()
 
 	// Drop and recreate tables for clean reload (avoids PK/lock issues)
-	log.Println("🗑️  Dropping existing data...")
+	log.Println("🗑️  Removendo dados existentes...")
 	tx.Exec("DROP TABLE IF EXISTS ibpt_state_tax")
 	tx.Exec("DROP TABLE IF EXISTS ibpt_product")
 
-	log.Println("📐 Creating tables...")
+	log.Println("📐 Criando tabelas...")
 	tx.Exec(`CREATE TABLE ibpt_product (
 		codigo           VARCHAR(20) NOT NULL,
 		ex               VARCHAR(10) DEFAULT '',
@@ -378,7 +380,7 @@ func processAllCSVFiles(dir string) error {
 	)`)
 
 	// Process first file for products (federal data)
-	log.Printf("📄 Reading CSV: %s ...", filepath.Base(files[0]))
+	log.Printf("📄 Lendo CSV: %s ...", filepath.Base(files[0]))
 	firstRecords, err := readCSV(files[0])
 	if err != nil {
 		return fmt.Errorf("read first CSV: %w", err)
@@ -418,7 +420,7 @@ func processAllCSVFiles(dir string) error {
 	}
 
 	elapsed := time.Since(start)
-	log.Printf("✅ Import complete: %d products + %d state taxes in %v",
+	log.Printf("✅ Importação concluída: %d produtos + %d impostos estaduais em %v",
 		productCount, totalStateTaxes, elapsed.Round(time.Millisecond))
 	return nil
 }
@@ -476,6 +478,45 @@ func processSingleCSV(filePath string) (string, int, error) {
 func handleUploadPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, uploadHTML)
+}
+
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var creds struct {
+		User string `json:"user"`
+		Pass string `json:"pass"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		jsonError(w, "Dados inválidos", http.StatusBadRequest)
+		return
+	}
+
+	if creds.User == adminUser && creds.Pass == adminPass {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"token":   "authenticated", // In a real app, use a real token
+		})
+	} else {
+		jsonError(w, "Usuário ou senha incorretos", http.StatusUnauthorized)
+	}
+}
+
+func adminMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simple check for a header. In a real app, use better token validation.
+		if r.Header.Get("X-Admin-Token") != "authenticated" {
+			// Also allow basic auth as fallback for easier debugging/direct API calls
+			username, password, ok := r.BasicAuth()
+			if ok && username == adminUser && password == adminPass {
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			jsonError(w, "Não autorizado", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -834,7 +875,7 @@ const uploadHTML = `<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IBPT Tax Manager</title>
+    <title>Gerenciador de Impostos IBPT</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -890,13 +931,11 @@ const uploadHTML = `<!DOCTYPE html>
             box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
         .header { text-align: center; margin-bottom: 28px; }
-        .header .icon {
-            width: 64px; height: 64px;
-            background: var(--gradient-1);
-            border-radius: 16px;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 28px; margin-bottom: 14px;
-            box-shadow: 0 8px 32px rgba(59,130,246,0.3);
+        .header .logo {
+            height: 48px;
+            width: auto;
+            margin-bottom: 20px;
+            filter: drop-shadow(0 4px 12px rgba(59,130,246,0.3));
         }
         .header h1 {
             font-size: 24px; font-weight: 700;
@@ -1012,14 +1051,53 @@ const uploadHTML = `<!DOCTYPE html>
             vertical-align: middle; margin-right: 6px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Login specific styles */
+        #loginOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-primary); z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .login-card { width: 100%; max-width: 400px; }
+        .login-row { margin-bottom: 16px; }
+        .login-row label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+        .login-row input {
+            width: 100%; padding: 12px; background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 12px; color: var(--text-primary); font-family: 'Inter', sans-serif;
+        }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <!-- Login Screen -->
+    <div id="loginOverlay">
+        <div class="container login-card">
+            <div class="card">
+                <div class="header">
+                    <img src="https://repag.com.br/images/logo.png" alt="Repag Logo" class="logo">
+                    <h1>Acesso Restrito</h1>
+                    <p>Entre com suas credenciais de administrador</p>
+                </div>
+                <div class="login-row">
+                    <label>Usuário</label>
+                    <input type="text" id="loginUser" placeholder="admin">
+                </div>
+                <div class="login-row">
+                    <label>Senha</label>
+                    <input type="password" id="loginPass" placeholder="••••••••">
+                </div>
+                <button class="btn" id="loginBtn">Entrar</button>
+                <div class="result" id="loginResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manager Screen -->
+    <div class="container hidden" id="managerContent">
         <div class="card">
             <div class="header">
-                <div class="icon">📊</div>
-                <h1>IBPT Tax Manager</h1>
+                <img src="https://repag.com.br/images/logo.png" alt="Repag Logo" class="logo">
+                <h1>Gerenciador de Impostos IBPT</h1>
                 <p>Importação multi-UF com CSV • Lei 12.741</p>
             </div>
 
@@ -1062,10 +1140,88 @@ const uploadHTML = `<!DOCTYPE html>
                 </div>
                 <div class="search-results" id="searchResults"></div>
             </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="remove" onclick="logout()" style="font-size: 12px; color: var(--text-muted);">Sair do Sistema</button>
+            </div>
         </div>
     </div>
 
     <script>
+        const loginOverlay = document.getElementById('loginOverlay');
+        const managerContent = document.getElementById('managerContent');
+        const loginBtn = document.getElementById('loginBtn');
+        const loginUser = document.getElementById('loginUser');
+        const loginPass = document.getElementById('loginPass');
+        const loginResult = document.getElementById('loginResult');
+
+        let authToken = localStorage.getItem('ibpt_admin_token');
+
+        function checkAuth() {
+            if (authToken) {
+                loginOverlay.classList.add('hidden');
+                managerContent.classList.remove('hidden');
+                loadStats();
+            } else {
+                loginOverlay.classList.remove('hidden');
+                managerContent.classList.add('hidden');
+            }
+        }
+
+        async function login() {
+            const user = loginUser.value.trim();
+            const pass = loginPass.value.trim();
+            if (!user || !pass) return;
+
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<span class="spinner"></span> Autenticando...';
+            loginResult.classList.remove('active');
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user, pass })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    authToken = data.token;
+                    localStorage.setItem('ibpt_admin_token', authToken);
+                    checkAuth();
+                } else {
+                    loginResult.className = 'result active error';
+                    loginResult.innerHTML = '❌ ' + (data.error || 'Erro ao autenticar');
+                }
+            } catch (err) {
+                loginResult.className = 'result active error';
+                loginResult.innerHTML = '❌ Erro de conexão';
+            }
+            loginBtn.disabled = false;
+            loginBtn.innerHTML = 'Entrar';
+        }
+
+        function logout() {
+            localStorage.removeItem('ibpt_admin_token');
+            authToken = null;
+            location.reload();
+        }
+
+        loginBtn.addEventListener('click', login);
+        loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+
+        // Wrapped Fetch to include auth header
+        async function authFetch(url, options = {}) {
+            if (!options.headers) options.headers = {};
+            options.headers['X-Admin-Token'] = authToken;
+            
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                logout();
+                throw new Error('Sessão expirada');
+            }
+            return res;
+        }
+
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
@@ -1076,8 +1232,10 @@ const uploadHTML = `<!DOCTYPE html>
         let selectedFiles = [];
 
         // Load stats
-        function loadStats() {
-            fetch('/api/status').then(r => r.json()).then(d => {
+        async function loadStats() {
+            try {
+                const r = await authFetch('/api/status');
+                const d = await r.json();
                 document.getElementById('productCount').textContent = d.products?.toLocaleString('pt-BR') || '0';
                 document.getElementById('stateCount').textContent = d.state_taxes?.toLocaleString('pt-BR') || '0';
                 document.getElementById('ufCount').textContent = d.ufs?.length || '0';
@@ -1092,9 +1250,11 @@ const uploadHTML = `<!DOCTYPE html>
                         ufSelect.appendChild(opt);
                     }
                 });
-            }).catch(() => {});
+            } catch (err) {}
         }
-        loadStats();
+
+        // Initialize
+        checkAuth();
 
         // File handling
         const ufPattern = /IBPTax([A-Z]{2})/i;
@@ -1117,6 +1277,8 @@ const uploadHTML = `<!DOCTYPE html>
             renderFileList();
         }
         function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+        window.removeFile = removeFile; // Make it global for onclick
+        
         function renderFileList() {
             fileList.innerHTML = selectedFiles.map((f, i) =>
                 '<div class="file-item"><span class="uf-tag">' + extractUF(f.name) + '</span>' +
@@ -1137,7 +1299,7 @@ const uploadHTML = `<!DOCTYPE html>
             selectedFiles.forEach(f => formData.append('files', f));
 
             try {
-                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const res = await authFetch('/api/upload', { method: 'POST', body: formData });
                 const data = await res.json();
                 if (data.success) {
                     result.className = 'result active success';
@@ -1160,7 +1322,7 @@ const uploadHTML = `<!DOCTYPE html>
             reprocessBtn.innerHTML = '<span class="spinner" style="border-top-color:var(--accent-blue)"></span> Reprocessando...';
             result.classList.remove('active');
             try {
-                const res = await fetch('/api/reprocess', { method: 'POST' });
+                const res = await authFetch('/api/reprocess', { method: 'POST' });
                 const data = await res.json();
                 if (data.success) {
                     result.className = 'result active success';
@@ -1193,7 +1355,7 @@ const uploadHTML = `<!DOCTYPE html>
             try {
                 let url = '/api/search?codigo=' + encodeURIComponent(q);
                 if (uf) url += '&uf=' + uf;
-                const res = await fetch(url);
+                const res = await authFetch(url);
                 const data = await res.json();
                 if (!data.results || data.results.length === 0) {
                     searchResults.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:14px;">Nenhum resultado</div>';
@@ -1223,7 +1385,7 @@ const uploadHTML = `<!DOCTYPE html>
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Println("🚀 Starting IBPT Tax Manager (multi-UF)...")
+	log.Println("🚀 Iniciando Gerenciador de Impostos IBPT (multi-UF)...")
 
 	db = connectDB()
 	defer db.Close()
@@ -1238,15 +1400,22 @@ func main() {
 	// Routes
 	r := mux.NewRouter()
 	r.HandleFunc("/", handleUploadPage).Methods("GET")
-	r.HandleFunc("/api/upload", handleUpload).Methods("POST")
-	r.HandleFunc("/api/reprocess", handleReprocessAll).Methods("POST")
-	r.HandleFunc("/api/status", handleStatus).Methods("GET")
-	r.HandleFunc("/api/search", handleSearch).Methods("GET")
+	r.HandleFunc("/api/login", handleLogin).Methods("POST")
+
+	// Management API (Protected)
+	adminSub := r.PathPrefix("/api").Subrouter()
+	adminSub.Use(adminMiddleware)
+	adminSub.HandleFunc("/upload", handleUpload).Methods("POST")
+	adminSub.HandleFunc("/reprocess", handleReprocessAll).Methods("POST")
+	adminSub.HandleFunc("/status", handleStatus).Methods("GET")
+	adminSub.HandleFunc("/search", handleSearch).Methods("GET")
+
+	// Public API
 	r.HandleFunc("/api/v1/produtos", handleBuscarTributo).Methods("GET")
 
-	log.Printf("🌐 Server running at http://localhost%s", serverPort)
-	log.Println("📡 API endpoint: GET /api/v1/produtos?token=...&codigo=NCM&uf=SC&valor=100")
+	log.Printf("🌐 Servidor rodando em http://localhost%s", serverPort)
+	log.Println("📡 Endpoint da API: GET /api/v1/produtos?token=...&codigo=NCM&uf=SC&valor=100")
 	if err := http.ListenAndServe(serverPort, r); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		log.Fatalf("Falha no servidor: %v", err)
 	}
 }

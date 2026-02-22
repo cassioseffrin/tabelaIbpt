@@ -1,0 +1,45 @@
+name: Deploy IBPT Manager
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build Binary
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o tabelaIbpt main.go
+
+      - name: Copy Binary to Hostinger
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: repag.com.br
+          username: apps
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "tabelaIbpt"
+          target: "/home/apps/go/tabelaIbpt"
+          strip_components: 0
+
+      - name: Restart Systemd Service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: repag.com.br
+          username: apps
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            sudo systemctl restart ibpt
+            echo "Deployment successful at $(date)"

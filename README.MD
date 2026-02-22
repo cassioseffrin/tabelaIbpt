@@ -59,7 +59,7 @@ Type=simple
 Restart=always
 RestartSec=30s
 WorkingDirectory=/home/apps/go/tabelaIbpt
-ExecStart=/home/apps/go/tabelaIbpt/tabelaIbpt
+ExecStart=/home/apps/go/tabelaIbpt/ibpt
 
 [Install]
 WantedBy=multi-user.target
