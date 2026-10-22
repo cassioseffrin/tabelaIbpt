@@ -89,7 +89,8 @@ var (
 
 func connectDB() *sql.DB {
 	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable connect_timeout=10",
+		// search_path fixo: não depender de ALTER ROLE/DATABASE no servidor
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable connect_timeout=10 search_path=public",
 		dbHost, dbPort, dbUser, dbPassword, dbName,
 	)
 	conn, err := sql.Open("postgres", connStr)
@@ -143,7 +144,7 @@ func ensureTables() {
 		if _, err := db.Exec(q); err != nil {
 			// Ignore "already exists" errors for indexes/tables
 			if !strings.Contains(err.Error(), "already exists") {
-				log.Printf("⚠️  SQL: %v", err)
+				log.Fatalf("❌ Falha ao garantir tabelas: %v", err)
 			}
 		}
 	}
